@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Konsel App - Bimbingan Konseling</title>
+    <title>TKP (Terima Konseling Problematik)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -27,7 +27,7 @@
                 <div>
                     <i class="fas fa-hands-helping fa-3x text-blue-500"></i>
                     <h2 class="mt-4 text-3xl font-bold text-gray-900">
-                        Selamat Datang di Konsel App
+                        Selamat Datang di TKP
                     </h2>
                     <p class="mt-2 text-gray-600">
                         Pilih peran Anda untuk masuk ke sistem.
@@ -43,6 +43,9 @@
                     <button onclick="login('orangtua')" class="w-full flex items-center justify-center gap-3 py-3 px-4 text-lg font-semibold rounded-lg text-white bg-purple-600 hover:bg-purple-700 transition-colors">
                         <i class="fas fa-user-shield"></i> Masuk sebagai Orang Tua
                     </button>
+                    <button onclick="openModal('admin-password-modal')" class="w-full flex items-center justify-center gap-3 py-3 px-4 text-lg font-semibold rounded-lg text-white bg-gray-800 hover:bg-gray-900 transition-colors">
+                        <i class="fas fa-user-cog"></i> Masuk sebagai Admin
+                    </button>
                 </div>
                  <p id="login-error" class="text-sm text-red-600 h-6 mt-2"></p> <!-- Elemen untuk mesej ralat -->
                  <p id="auth-status" class="text-xs text-gray-500 pt-4">Mengautentikasi...</p>
@@ -55,7 +58,7 @@
             <!-- Sidebar -->
             <aside class="w-64 bg-white shadow-md flex flex-col">
                 <div class="p-6 text-center border-b">
-                    <h1 class="text-2xl font-bold text-blue-600"><i class="fas fa-hands-helping"></i> Konsel App</h1>
+                    <h1 class="text-2xl font-bold text-blue-600"><i class="fas fa-hands-helping"></i> TKP</h1>
                     <p id="user-role-display" class="text-sm text-gray-500 mt-1 capitalize"></p>
                 </div>
                 <nav id="sidebar-nav" class="flex-1 p-4 space-y-2">
@@ -100,6 +103,9 @@
 
                     <!-- AI Chat View -->
                     <div id="ai-chat-view" class="page-view hidden h-full flex flex-col"></div>
+
+                    <!-- Admin: Kelola User View -->
+                    <div id="kelola-user-view" class="page-view hidden"></div>
                 </div>
             </main>
         </div>
@@ -226,6 +232,23 @@
         </div>
     </div>
 
+    <!-- Modal Password Admin (BARU) -->
+    <div id="admin-password-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4">Login Admin</h3>
+            <p class="text-sm text-gray-600 mb-4">Silakan masukkan kata sandi admin untuk melanjutkan.</p>
+            <div>
+                <label for="admin-password-input" class="block text-sm font-medium text-gray-700">Kata Sandi</label>
+                <input type="password" id="admin-password-input" class="mt-1 block w-full py-2 px-3 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                <p id="admin-password-error" class="text-red-600 text-sm mt-2 h-5"></p> <!-- Area pesan error -->
+            </div>
+            <div class="mt-6 flex justify-end gap-3">
+                <button onclick="closeModal('admin-password-modal')" class="py-2 px-4 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">Batal</button>
+                <button onclick="handleAdminLogin()" class="py-2 px-4 bg-gray-800 text-white rounded-md hover:bg-gray-900">Masuk</button>
+            </div>
+        </div>
+    </div>
+
 
     <script type="module">
         // Import Firebase
@@ -248,6 +271,7 @@
         let allMaterials = []; 
         let allReports = [];
         let allActivities = [];
+        let allUsers = []; // State untuk menyimpan semua data pengguna (untuk Admin)
 
         const loginScreen = document.getElementById('login-screen');
         const mainApp = document.getElementById('main-app');
@@ -301,6 +325,10 @@
                 { name: 'Kegiatan Sekolah', icon: 'fa-running', view: 'kegiatan-view' },
                 { name: 'Laporan & Keluhan', icon: 'fa-flag', view: 'laporan-view' }, 
                 { name: 'Ngobrol Bareng AI', icon: 'fa-robot', view: 'ai-chat-view' },
+            ],
+            admin: [
+                { name: 'Dashboard', icon: 'fa-tachometer-alt', view: 'dashboard-view' },
+                { name: 'Kelola User', icon: 'fa-users-cog', view: 'kelola-user-view' },
             ]
         };
 
@@ -341,6 +369,9 @@
                 listenToActivities();
             } else if (viewId === 'ai-chat-view') {
                 renderAIChatView();
+            } else if (viewId === 'kelola-user-view') {
+                renderKelolaUserView();
+                listenToAllUsers();
             }
         }
         
@@ -392,6 +423,23 @@
                         <h3 class="font-bold text-lg mb-4 text-red-600"><i class="fas fa-exclamation-triangle mr-2"></i>Permintaan Janji Temu Tertunda</h3>
                         <div id="pending-requests" class="space-y-3">
                            <p class="text-gray-500">Memuat permintaan...</p>
+                        </div>
+                    </div>
+                `;
+            } else if (role === 'admin') {
+                content += `
+                    <div class="grid md:grid-cols-3 gap-6">
+                         <div class="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow text-center">
+                            <h3 class="font-bold text-lg text-blue-600">Total Pengguna</h3>
+                            <p id="total-users-stat" class="text-4xl font-bold mt-2">${allUsers.length}</p>
+                        </div>
+                        <div class="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow text-center">
+                            <h3 class="font-bold text-lg text-red-600">Total Laporan</h3>
+                            <p id="total-reports-stat" class="text-4xl font-bold mt-2">${allReports.length}</p>
+                        </div>
+                         <div class="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow text-center">
+                            <h3 class="font-bold text-lg text-green-600">Total Materi</h3>
+                            <p id="total-materials-stat" class="text-4xl font-bold mt-2">${allMaterials.length}</p>
                         </div>
                     </div>
                 `;
@@ -574,6 +622,109 @@
             }
         }
         // --- END: FUNGSI BARU LAPORAN & KELUHAN ---
+
+        // --- START: FUNGSI BARU KELOLA USER (ADMIN) ---
+        function renderKelolaUserView() {
+            const view = document.getElementById('kelola-user-view');
+            view.innerHTML = `
+                <h2 class="text-3xl font-bold mb-6 text-white drop-shadow-lg">Kelola Pengguna Sistem</h2>
+                <div class="bg-white/90 backdrop-blur-sm p-6 rounded-xl shadow overflow-x-auto">
+                    <table class="w-full text-sm text-left text-gray-700">
+                        <thead class="text-xs text-gray-800 uppercase bg-gray-200">
+                            <tr>
+                                <th scope="col" class="px-6 py-3">Nama Pengguna</th>
+                                <th scope="col" class="px-6 py-3">Peran (Role)</th>
+                                <th scope="col" class="px-6 py-3">User ID</th>
+                                <th scope="col" class="px-6 py-3 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-list-table">
+                            <tr><td colspan="4" class="text-center p-4">Memuat data pengguna...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }
+
+        function listenToAllUsers() {
+            if (userRole !== 'admin') return;
+            const q = query(collection(db, `/artifacts/${appId}/public/data/users`));
+            const container = document.getElementById('user-list-table');
+
+            onSnapshot(q, (querySnapshot) => {
+                allUsers = [];
+                container.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    container.innerHTML = '<tr><td colspan="4" class="text-center p-4">Tidak ada pengguna terdaftar.</td></tr>';
+                    return;
+                }
+
+                querySnapshot.forEach((doc) => {
+                    const user = doc.data();
+                    allUsers.push({ id: doc.id, ...user });
+                });
+                
+                // Update stat di dashboard jika view-nya adalah dashboard
+                if (document.getElementById('dashboard-view').classList.contains('page-view') && !document.getElementById('dashboard-view').classList.contains('hidden')) {
+                    document.getElementById('total-users-stat').textContent = allUsers.length;
+                }
+
+
+                allUsers.forEach(user => {
+                    const isCurrentUser = user.uid === userId;
+                    const roleOptions = ['siswa', 'guru', 'orangtua', 'admin']
+                        .map(role => `<option value="${role}" ${user.role === role ? 'selected' : ''}>${role}</option>`)
+                        .join('');
+                    
+                    const row = document.createElement('tr');
+                    row.className = 'bg-white border-b';
+                    row.innerHTML = `
+                        <td class="px-6 py-4 font-medium text-gray-900">${user.name}</td>
+                        <td class="px-6 py-4">
+                            <select onchange="updateUserRole('${user.uid}', this.value)" class="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" ${isCurrentUser ? 'disabled' : ''}>
+                                ${roleOptions}
+                            </select>
+                        </td>
+                        <td class="px-6 py-4 text-gray-500 font-mono text-xs">${user.uid}</td>
+                        <td class="px-6 py-4 text-center">
+                            <button onclick="deleteUser('${user.uid}', '${user.name}')" class="font-medium text-red-600 hover:underline" ${isCurrentUser ? 'disabled' : ''} title="${isCurrentUser ? 'Tidak dapat menghapus diri sendiri' : 'Hapus pengguna'}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    `;
+                    container.appendChild(row);
+                });
+
+            }, (error) => {
+                console.error("Error listening to users:", error);
+                container.innerHTML = '<tr><td colspan="4" class="text-center p-4 text-red-500">Gagal memuat data pengguna.</td></tr>';
+            });
+        }
+        
+        window.updateUserRole = async (targetUserId, newRole) => {
+            if (userRole !== 'admin') return;
+            const docRef = doc(db, `/artifacts/${appId}/public/data/users`, targetUserId);
+            try {
+                await updateDoc(docRef, { role: newRole });
+                console.log(`Peran untuk user ${targetUserId} berhasil diubah menjadi ${newRole}.`);
+            } catch (e) {
+                console.error("Gagal mengubah peran pengguna:", e);
+            }
+        };
+
+        window.deleteUser = async (targetUserId, targetUserName) => {
+            if (userRole !== 'admin') return;
+            if (confirm(`Apakah Anda yakin ingin menghapus pengguna "${targetUserName}" (${targetUserId})? Tindakan ini tidak dapat diurungkan.`)) {
+                try {
+                    await deleteDoc(doc(db, `/artifacts/${appId}/public/data/users`, targetUserId));
+                    console.log(`Pengguna "${targetUserName}" berhasil dihapus.`);
+                } catch (e) {
+                    console.error("Gagal menghapus pengguna:", e);
+                }
+            }
+        };
+        // --- END: FUNGSI BARU KELOLA USER (ADMIN) ---
 
         // --- START: FUNGSI BARU KEGIATAN SEKOLAH ---
         function renderKegiatanView(role) {
@@ -761,12 +912,13 @@
 
             if (querySnapshot.empty) {
                 let name = `User ${userId.substring(0, 5)}`;
-                if (role === 'guru') name = `Guru BK ${userId.substring(0, 5)}`;
-                if (role === 'orangtua') name = `Orang Tua ${userId.substring(0, 5)}`;
-                userData = { uid: userId, role: role, name: name, docId: userId };
-                await setDoc(userRef, userData);
-            } else {
-                 userData = querySnapshot.docs[0].data();
+            if (role === 'guru') name = `Guru BK ${userId.substring(0, 5)}`;
+            if (role === 'orangtua') name = `Orang Tua ${userId.substring(0, 5)}`;
+            if (role === 'admin') name = `Admin ${userId.substring(0, 5)}`;
+            userData = { uid: userId, role: role, name: name, docId: userId };
+            await setDoc(userRef, userData);
+        } else {
+             userData = querySnapshot.docs[0].data();
                  // Jika peran di Firestore berbeda, perbarui (misal: dari siswa ke ortu)
                  if (userData.role !== role) {
                     await updateDoc(userRef, { role: role });
@@ -786,6 +938,7 @@
             renderAIChatView();
             renderLaporanView(role);
             renderKegiatanView(role);
+            if (role === 'admin') renderKelolaUserView();
 
             switchView('dashboard-view');
             
@@ -1301,6 +1454,22 @@
             }
         };
 
+        window.handleAdminLogin = () => {
+            const passwordInput = document.getElementById('admin-password-input');
+            const password = passwordInput.value;
+            const errorElement = document.getElementById('admin-password-error');
+            
+            if (password === "admin123") { // Kata sandi untuk admin
+                errorElement.textContent = '';
+                closeModal('admin-password-modal');
+                login('admin');
+                passwordInput.value = '';
+            } else {
+                errorElement.textContent = "Kata sandi yang Anda masukkan salah.";
+                passwordInput.value = '';
+            }
+        };
+
         window.logout = async () => {
             if (quoteInterval) clearInterval(quoteInterval);
             await signOut(auth);
@@ -1321,6 +1490,10 @@
                 document.getElementById('guru-password-input').value = '';
                 document.getElementById('guru-password-error').textContent = '';
             }
+            if (id === 'admin-password-modal') {
+                document.getElementById('admin-password-input').value = '';
+                document.getElementById('admin-password-error').textContent = '';
+            }
         };
         window.submitBooking = submitBooking;
         window.updateAppointmentStatus = updateAppointmentStatus;
@@ -1331,6 +1504,9 @@
         window.submitActivity = submitActivity;
         window.deleteActivity = deleteActivity;
         window.handleGuruLogin = handleGuruLogin; // Tambahkan fungsi baru ke window
+        window.handleAdminLogin = handleAdminLogin;
+        window.updateUserRole = updateUserRole;
+        window.deleteUser = deleteUser;
 
 
         // Inisialisasi Aplikasi
@@ -1357,3 +1533,4 @@
     </script>
 </body>
 </html>
+
